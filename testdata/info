@@ -1,0 +1,119 @@
+//package cache
+//
+//import (
+//	"encoding/json"
+//	"sync"
+//	"time"
+//)
+//
+//type Cache struct {
+//	m              sync.RWMutex
+//	expirationTime time.Time
+//	timeLimit      int
+//	data           map[string]interface{}
+//}
+//
+//func NewCache(timeLimit int) *Cache {
+//	c := &Cache{
+//		data:      make(map[string]interface{}),
+//		timeLimit: timeLimit,
+//	}
+//	return c
+//}
+//
+//func (c *Cache) Set(key string, data interface{}) {
+//	c.m.Lock()
+//	defer c.m.Unlock()
+//
+//	c.expirationTime = time.Now().Add(time.Second * time.Duration(c.timeLimit))
+//	c.data[key] = data
+//}
+//
+//func (c *Cache) Get(key string, v interface{}) bool {
+//	c.m.RLock()
+//	defer c.m.RUnlock()
+//
+//	if data, ok := c.data[key]; ok {
+//		dataBytes, err := json.Marshal(data)
+//		if err != nil {
+//			return false
+//		}
+//
+//		if err := json.Unmarshal(dataBytes, v); err != nil {
+//			return false
+//		}
+//
+//		return true
+//	}
+//
+//	return false
+//}
+//
+//func (c *Cache) Expired() bool {
+//	return time.Now().After(c.expirationTime)
+//}
+
+package cache
+
+import (
+	"encoding/json"
+	"sync"
+	"time"
+)
+
+type CacheItem struct {
+	Data      interface{}
+	ExpiresAt time.Time
+}
+
+type Cache struct {
+	m         sync.RWMutex
+	data      map[string]CacheItem
+	timeLimit int
+}
+
+func NewCache(timeLimit int) *Cache {
+	return &Cache{
+		data:      make(map[string]CacheItem),
+		timeLimit: timeLimit,
+	}
+}
+
+func (c *Cache) Set(key string, data interface{}) {
+	c.m.Lock()
+	defer c.m.Unlock()
+
+	c.data[key] = CacheItem{
+		Data:      data,
+		ExpiresAt: time.Now().Add(time.Second * time.Duration(c.timeLimit)),
+	}
+}
+
+func (c *Cache) Get(key string, v interface{}) bool {
+	c.m.RLock()
+	defer c.m.RUnlock()
+
+	item, ok := c.data[key]
+	if !ok || time.Now().After(item.ExpiresAt) {
+		return false
+	}
+
+	dataBytes, err := json.Marshal(item.Data)
+	if err != nil {
+		return false
+	}
+
+	if err := json.Unmarshal(dataBytes, v); err != nil {
+		return false
+	}
+
+	return true
+}
+
+func (c *Cache) Expired(key string) bool {
+	c.m.RLock()
+	defer c.m.RUnlock()
+
+	item, ok := c.data[key]
+	return !ok || time.Now().After(item.ExpiresAt)
+}
